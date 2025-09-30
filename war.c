@@ -15,20 +15,34 @@
 // ============================================================================
 
 // Inclusão das bibliotecas padrão necessárias para entrada/saída, alocação de memória, manipulação de strings e tempo.
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 // --- Constantes Globais ---
 // Definem valores fixos para o número de territórios, missões e tamanho máximo de strings, facilitando a manutenção.
-
+#define MAX_TERRITORIOS 5
 // --- Estrutura de Dados ---
 // Define a estrutura para um território, contendo seu nome, a cor do exército que o domina e o número de tropas.
-
+struct territorio {
+    char nome[30];   // Nome do território
+    char cor[10];    // Cor associada ao território
+    int tropas;      // Quantidade de tropas no território
+};
 // --- Protótipos das Funções ---
 // Declarações antecipadas de todas as funções que serão usadas no programa, organizadas por categoria.
 // Funções de setup e gerenciamento de memória:
 // Funções de interface com o usuário:
 // Funções de lógica principal do jogo:
 // Função utilitária:
+void limparBufferEntrada(){
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+};
 
+// Função para remover o caractere '\n' que o fgets captura no final das strings
+void removerNovaLinha(char *str) {
+    str[strcspn(str, "\n")] = '\0';
+}
 // --- Função Principal (main) ---
 // Função principal que orquestra o fluxo do jogo, chamando as outras funções em ordem.
 int main() {
@@ -50,7 +64,77 @@ int main() {
 
     // 3. Limpeza:
     // - Ao final do jogo, libera a memória alocada para o mapa para evitar vazamentos de memória.
+  // Array que armazena até MAX_TERRITORIOS territórios
+    struct territorio territorio[MAX_TERRITORIOS];
+    int cadastro = 0;  // Contador de quantos territórios já foram cadastrados
+    int opcao = 0;     // Guarda a opção escolhida pelo usuário no menu
 
+    // Loop principal do programa (menu interativo)
+    do{
+        // Exibe o menu do jogo
+        printf("\n==============================\n");
+        printf("         WAR GAME\n");
+        printf("==============================\n");
+        printf("1 - Cadastrar novo territorio\n");
+        printf("2 - Listar todos os territorios\n");
+        printf("3 - Sair\n");
+        printf("==============================\n");
+        printf("Escolha uma opção: ");
+        scanf("%d", &opcao);
+
+        limparBufferEntrada(); // Limpa lixo do buffer após scanf
+
+        switch(opcao){
+
+        // Caso 1 → Cadastrar um novo território
+        case 1:
+            printf("---Cadastro de Novo Território ---\n\n");
+            if(cadastro < MAX_TERRITORIOS) { // Verifica se ainda há espaço
+                printf("Digite o nome do território: ");
+                fgets(territorio[cadastro].nome, 30, stdin);
+                removerNovaLinha(territorio[cadastro].nome);
+
+                printf("Digite a cor do território: ");
+                fgets(territorio[cadastro].cor, 10, stdin);
+                removerNovaLinha(territorio[cadastro].cor);
+
+                printf("Digite a quantidade de tropas: ");
+                scanf("%d", &territorio[cadastro].tropas);
+                limparBufferEntrada(); // Evita problemas com próximo fgets
+
+                cadastro++; // Incrementa o número de territórios cadastrados
+                printf("\nTerritório cadastrado com sucesso\n");
+            } else {
+                printf("Limite de territórios atingido\n");
+            }
+            break;
+
+        // Caso 2 → Listar todos os territórios cadastrados
+        case 2:
+            if(cadastro == 0) { // Verifica se há territórios cadastrados
+                printf("\nNenhum território cadastrado.\n");
+            } else {
+                printf("\n--- Lista de Territórios ---\n");
+                for(int i = 0; i < cadastro; i++) {
+                    printf("%d. Nome: %s | Cor: %s | Tropas: %d\n", 
+                           i+1, territorio[i].nome, territorio[i].cor, territorio[i].tropas);
+                }
+            }
+            break;
+
+        // Caso 3 → Encerrar o programa
+        case 3:
+            printf("\nSaindo do jogo\n");
+            break;
+
+        // Opção inválida
+        default:
+            printf("\nNenhuma opção escolhida\n");
+            break;
+        }
+
+    }while(opcao != 3); // Repete o menu até o usuário escolher "3 - Sair"
+}
     return 0;
 }
 
