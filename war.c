@@ -14,6 +14,15 @@
 //
 // ============================================================================
 
+/*
+  war_missoes.c
+  Exemplo de implementação do sistema de missões solicitado.
+  - Usa malloc/free para armazenar missão do jogador dinamicamente.
+  - Função atribuirMissao copia usando strcpy.
+  - Função verificarMissao analisa a missão e verifica no mapa.
+  - Código em português com comentários.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,37 +30,44 @@
 
 #define MAX_TERRITORIOS 5
 #define TAM_NOME 30
-#define TAM_COR  10
+#define TAM_COR  16
+#define TAM_MISSAO 256
 
 /* Estrutura de território */
-struct territorio {
+typedef struct territorio {
     char nome[TAM_NOME];
     char cor[TAM_COR];
     int tropas;
-};
+} Territorio;
 
-/* --- Protótipos --- */
+/* ---------- Prototipos ---------- */
 /* utilitários */
 void limparBufferEntrada(void);
 void removerNovaLinha(char *str);
 
 /* gerenciamento de mapa */
-struct territorio* alocarMapa(int qtd);
-void inicializarTerritorios(struct territorio* mapa, int qtd);
-void liberarMemoria(struct territorio* mapa);
+Territorio* alocarMapa(int qtd);
+void inicializarTerritorios(Territorio* mapa, int qtd);
+void liberarMemoria(Territorio* mapa);
 
 /* interface */
 void exibirMenuPrincipal(void);
-void exibirMapa(const struct territorio* mapa, int qtd);
-void exibirMissao(int missaoId, const char* corJogador, int alvoNumero);
+void exibirMapa(const Territorio* mapa, int qtd);
+void exibirMissaoFormatada(const char* missao);
 
-/* fase de jogo / ataque / missões */
-void faseDeAtaque(struct territorio* mapa, int qtd, const char* corJogador);
-void simularAtaque(struct territorio* atacante, struct territorio* defensor, const char* corJogador);
-int sortearMissao(void);
-int verificarVitoria(const struct territorio* mapa, int qtd, int missaoId, const char* corJogador, int alvoNumero);
+/* missões */
+void atribuirMissao(char* destino, char* missoes[], int totalMissoes);
+void personalizarMissao(char* destino, const char* corJogador);
+int verificarMissao(char* missao, Territorio* mapa, int tamanho);
 
-/* --- Implementações --- */
+/* jogo / combate */
+void faseDeAtaque(Territorio* mapa, int qtd, const char* corJogador);
+void simularAtaque(Territorio* atacante, Territorio* defensor);
+
+/* util auxiliar */
+static void ordenarDesc(int *arr, int len);
+
+/* ---------- Implementações ---------- */
 
 void limparBufferEntrada(void) {
     int c;
@@ -62,27 +78,20 @@ void removerNovaLinha(char *str) {
     str[strcspn(str, "\n")] = '\0';
 }
 
-/* alocarMapa():
- * Aloca dinamicamente um vetor de 'struct territorio' usando calloc.
- * Retorna ponteiro ou NULL em caso de falha.
- */
-struct territorio* alocarMapa(int qtd) {
+/* aloca mapa dinamicamente */
+Territorio* alocarMapa(int qtd) {
     if (qtd <= 0) return NULL;
-    struct territorio* mapa = (struct territorio*) calloc((size_t)qtd, sizeof(struct territorio));
-    if (mapa == NULL) {
+    Territorio* mapa = (Territorio*) calloc((size_t)qtd, sizeof(Territorio));
+    if (!mapa) {
         fprintf(stderr, "Erro: falha na alocacao do mapa.\n");
         return NULL;
     }
     return mapa;
 }
 
-/* inicializarTerritorios():
- * Preenche os dados iniciais de cada território no mapa (nome, cor, tropas).
- * Modifica o mapa passado por ponteiro.
- */
-void inicializarTerritorios(struct territorio* mapa, int qtd) {
+/* inicializa territórios (entrada do usuário) */
+void inicializarTerritorios(Territorio* mapa, int qtd) {
     if (!mapa || qtd <= 0) return;
-
     printf("\n=== Inicializacao dos %d territorios ===\n", qtd);
     for (int i = 0; i < qtd; ++i) {
         printf("\nTerritorio %d/%d\n", i+1, qtd);
@@ -111,32 +120,24 @@ void inicializarTerritorios(struct territorio* mapa, int qtd) {
     }
 }
 
-/* liberarMemoria():
- * Libera a memória alocada para o mapa.
- */
-void liberarMemoria(struct territorio* mapa) {
+void liberarMemoria(Territorio* mapa) {
     if (mapa) free(mapa);
 }
 
-/* exibirMenuPrincipal():
- * Imprime o menu de ações.
- */
 void exibirMenuPrincipal(void) {
     printf("\n=================================\n");
     printf("           MENU PRINCIPAL        \n");
     printf("=================================\n");
     printf("1 - Exibir mapa\n");
     printf("2 - Fase de ataque\n");
-    printf("3 - Verificar missao\n");
+    printf("3 - Exibir missao do jogador\n");
+    printf("4 - Verificar missao (checar vitoria)\n");
     printf("0 - Sair\n");
     printf("=================================\n");
     printf("Escolha uma opcao: ");
 }
 
-/* exibirMapa():
- * Mostra o estado atual de todos os territorios (apenas leitura).
- */
-void exibirMapa(const struct territorio* mapa, int qtd) {
+void exibirMapa(const Territorio* mapa, int qtd) {
     if (!mapa) {
         printf("Mapa vazio.\n");
         return;
@@ -153,27 +154,150 @@ void exibirMapa(const struct territorio* mapa, int qtd) {
     printf("=========================================\n");
 }
 
-/* exibirMissao():
- * Exibe a missão sorteada de forma amigável.
- * missaoId: 0 => destruir exército específico; 1 => conquistar N territorios.
- * corJogador: cor do jogador (para referência).
- * alvoNumero: valor associado à missão (por exemplo, número de territórios) ou ignorado se desnecessário.
- */
-void exibirMissao(int missaoId, const char* corJogador, int alvoNumero) {
-    printf("\n--- MISSÃO SECRETA ---\n");
-    if (missaoId == 0) {
-        printf("Missao: Eliminar TODO o exército de cor '%s' do mapa (tornar 0 territorios dessa cor).\n", corJogador);
-        printf("Obs: Para testes a missao pede eliminar o proprio exército do jogador; voce pode trocar a cor alvo no codigo se quiser.\n");
-    } else if (missaoId == 1) {
-        printf("Missao: Conquistar pelo menos %d territorios (ter sob seu controle).\n", alvoNumero);
+/* imprime apenas a parte visual da missão (após personalização) */
+void exibirMissaoFormatada(const char* missao) {
+    if (!missao) {
+        printf("Nenhuma missao atribuida.\n");
+        return;
+    }
+    /* a string de missão foi formatada com '|' separando meta legível */
+    const char* ppipe = strchr(missao, '|');
+    if (ppipe) {
+        printf("\n--- MISSÃO SECRETA ---\n%s\n", ppipe + 1); /* texto legível depois do '|' */
     } else {
-        printf("Missao: (desconhecida)\n");
+        printf("\n--- MISSÃO ---\n%s\n", missao);
     }
 }
 
-/* --- faseDeAtaque e simularAtaque --- */
+/* Sorteia e copia o template de missão para 'destino' usando strcpy */
+void atribuirMissao(char* destino, char* missoes[], int totalMissoes) {
+    if (!destino || !missoes || totalMissoes <= 0) return;
+    int id = rand() % totalMissoes;
+    /* copia do template (pode conter <COR> para ser substituído depois) */
+    strcpy(destino, missoes[id]);  /* conforme requisito: usa strcpy */
+}
 
-/* ordenarDesc helper (pequeno) */
+/* substitui todas ocorrencias de "<COR>" na string destino pela corJogador
+   pressupõe que 'destino' tenha espaço suficiente (na main alocamos TAM_MISSAO) */
+void personalizarMissao(char* destino, const char* corJogador) {
+    if (!destino || !corJogador) return;
+    char buffer[TAM_MISSAO];
+    buffer[0] = '\0';
+
+    const char *p = destino;
+    while (*p) {
+        const char *pos = strstr(p, "<COR>");
+        if (!pos) {
+            /* copia restante */
+            strncat(buffer, p, TAM_MISSAO - strlen(buffer) - 1);
+            break;
+        }
+        /* copia trecho antes do placeholder */
+        size_t lenPrefix = (size_t)(pos - p);
+        if (lenPrefix > 0)
+            strncat(buffer, p, (TAM_MISSAO - strlen(buffer) - 1) < lenPrefix ? (TAM_MISSAO - strlen(buffer) - 1) : lenPrefix);
+
+        /* concatena a cor do jogador */
+        strncat(buffer, corJogador, TAM_MISSAO - strlen(buffer) - 1);
+
+        /* avança ponteiro após "<COR>" */
+        p = pos + strlen("<COR>");
+    }
+
+    /* copia o resultado de volta a destino */
+    strncpy(destino, buffer, TAM_MISSAO - 1);
+    destino[TAM_MISSAO - 1] = '\0';
+}
+
+/* verificarMissao:
+   A missão é uma string formatada contendo tags no formato:
+   - "DESTRUIR_COR:<cor>|Descrição legivel..."
+   - "CONQUISTAR_N:<n>;COR:<cor>|Descrição legivel..."
+   - "CONSECUTIVOS:<n>;COR:<cor>|Descrição legivel..."
+
+   A função interpreta a tag e verifica a condição no mapa.
+   Retorna 1 se cumprida, 0 caso contrário.
+*/
+int verificarMissao(char* missao, Territorio* mapa, int tamanho) {
+    if (!missao || !mapa || tamanho <= 0) return 0;
+
+    /* buscar o tipo até ':' */
+    if (strncmp(missao, "DESTRUIR_COR:", 13) == 0) {
+        /* formato: DESTRUIR_COR:<cor>|... */
+        const char* p = missao + 13;
+        const char* q = strchr(p, '|');
+        char corAlvo[TAM_COR];
+        if (!q) q = p + strlen(p);
+        size_t len = (size_t)(q - p);
+        if (len >= TAM_COR) len = TAM_COR - 1;
+        strncpy(corAlvo, p, len);
+        corAlvo[len] = '\0';
+
+        /* verificar se existe algum territorio com essa cor */
+        for (int i = 0; i < tamanho; ++i) {
+            if (strcmp(mapa[i].cor, corAlvo) == 0) return 0; /* ainda existe */
+        }
+        return 1; /* nenhum encontrado => missão cumprida */
+
+    } else if (strncmp(missao, "CONQUISTAR_N:", 12) == 0) {
+        /* formato: CONQUISTAR_N:<n>;COR:<cor>|... */
+        const char* p = missao + 12;
+        int n = atoi(p);
+        const char* corTag = strstr(missao, "COR:");
+        char corAlvo[TAM_COR] = {0};
+        if (corTag) {
+            corTag += 4;
+            const char* q = strchr(corTag, '|');
+            if (!q) q = corTag + strlen(corTag);
+            size_t len = (size_t)(q - corTag);
+            if (len >= TAM_COR) len = TAM_COR - 1;
+            strncpy(corAlvo, corTag, len);
+            corAlvo[len] = '\0';
+        } else {
+            return 0; /* sem cor definida, não conseguimos checar */
+        }
+
+        int contador = 0;
+        for (int i = 0; i < tamanho; ++i) {
+            if (strcmp(mapa[i].cor, corAlvo) == 0) contador++;
+        }
+        return (contador >= n) ? 1 : 0;
+
+    } else if (strncmp(missao, "CONSECUTIVOS:", 13) == 0) {
+        /* formato: CONSECUTIVOS:<n>;COR:<cor>|... -> verificar se há uma sequência de n territorios adjacentes
+           (neste mapa simples sem adjacência real, interpretamos "seguidos" como índices consecutivos no vetor)
+        */
+        const char* p = missao + 13;
+        int n = atoi(p);
+        const char* corTag = strstr(missao, "COR:");
+        char corAlvo[TAM_COR] = {0};
+        if (corTag) {
+            corTag += 4;
+            const char* q = strchr(corTag, '|');
+            if (!q) q = corTag + strlen(corTag);
+            size_t len = (size_t)(q - corTag);
+            if (len >= TAM_COR) len = TAM_COR - 1;
+            strncpy(corAlvo, corTag, len);
+            corAlvo[len] = '\0';
+        } else return 0;
+
+        int run = 0;
+        for (int i = 0; i < tamanho; ++i) {
+            if (strcmp(mapa[i].cor, corAlvo) == 0) {
+                run++;
+                if (run >= n) return 1;
+            } else {
+                run = 0;
+            }
+        }
+        return 0;
+    }
+
+    /* se não reconheceu o formato, retorna falso */
+    return 0;
+}
+
+/* ordenarDesc: ordena vetor int decrescente (pequeno helper) */
 static void ordenarDesc(int *arr, int len) {
     for (int i = 0; i < len - 1; ++i)
         for (int j = 0; j < len - 1 - i; ++j)
@@ -182,15 +306,8 @@ static void ordenarDesc(int *arr, int len) {
             }
 }
 
-/* simularAtaque():
- * Executa a logica de batalha entre dois territorios.
- * Regras:
- *  - atacante deve ter >1 tropa para atacar.
- *  - atacante rola até 3 dados (max = tropas-1); defensor até 2 dados (max = tropas).
- *  - compara maiores dados por pares; perdedor de cada comparacao perde 1 tropa.
- *  - se defensor ficar com 0 tropas, troca dono para a cor do atacante e move 1 tropa.
- */
-void simularAtaque(struct territorio* atacante, struct territorio* defensor, const char* corJogador) {
+/* simularAtaque(): lógica simplificada */
+void simularAtaque(Territorio* atacante, Territorio* defensor) {
     if (!atacante || !defensor) return;
 
     if (atacante->tropas <= 1) {
@@ -259,8 +376,7 @@ void simularAtaque(struct territorio* atacante, struct territorio* defensor, con
         /* mover 1 tropa do atacante para o defensor (ou o max possivel mantendo 1) */
         int mover = 1;
         if (atacante->tropas - mover < 1) mover = atacante->tropas - 1;
-        if (mover < 1) mover = 1; // garante mover pelo menos 1
-
+        if (mover < 1) mover = 1; /* garante mover pelo menos 1 */
         atacante->tropas -= mover;
         defensor->tropas += mover;
 
@@ -272,10 +388,10 @@ void simularAtaque(struct territorio* atacante, struct territorio* defensor, con
     printf(" -> %s | dono: %s | tropas: %d\n", defensor->nome, defensor->cor, defensor->tropas);
 }
 
-/* faseDeAtaque():
- * Gerencia a interação do jogador para selecionar territorios e iniciar o ataque.
- */
-void faseDeAtaque(struct territorio* mapa, int qtd, const char* corJogador) {
+/* faseDeAtaque: escolhe indices e chama simularAtaque */
+void faseDeAtaque(Territorio* mapa, int qtd, const char* corJogador) {
+    (void) corJogador; /* não usado aqui, mas mantido na assinatura */
+
     if (!mapa || qtd <= 0) return;
 
     exibirMapa(mapa, qtd);
@@ -326,73 +442,61 @@ void faseDeAtaque(struct territorio* mapa, int qtd, const char* corJogador) {
         return;
     }
 
-    simularAtaque(&mapa[ia], &mapa[id], corJogador);
+    simularAtaque(&mapa[ia], &mapa[id]);
 }
 
-/* sortearMissao():
- * Retorna um ID de missao aleatorio (0 ou 1).
- * 0 = destruir exército (a cor do jogador) --> nota: para demostrar, essa missaõ pede destruir um exército identificado pela cor do jogador;
- * 1 = conquistar N territorios (alvoNumero será usado no main).
- */
-int sortearMissao(void) {
-    return rand() % 2; /* 0 ou 1 */
-}
-
-/* verificarVitoria():
- * Verifica se a missao foi cumprida.
- * - missaoId 0: "destruir exército de cor jogador" -> significa não existir mais territorios com a cor informada.
- * - missaoId 1: "conquistar >= alvoNumero territorios" -> conta quantos territorios possuem cor igual a corJogador.
- * Retorna 1 se cumprida, 0 caso contrario.
- */
-int verificarVitoria(const struct territorio* mapa, int qtd, int missaoId, const char* corJogador, int alvoNumero) {
-    if (!mapa || !corJogador) return 0;
-
-    if (missaoId == 0) {
-        /* verificar se não existe mais territorios com a cor alvo (aqui usamos corJogador como cor alvo) */
-        for (int i = 0; i < qtd; ++i) {
-            if (strcmp(mapa[i].cor, corJogador) == 0) {
-                /* ainda existe pelo menos 1 território da cor alvo */
-                return 0;
-            }
-        }
-        return 1; /* nenhum territorio com a cor alvo */
-    } else if (missaoId == 1) {
-        int contador = 0;
-        for (int i = 0; i < qtd; ++i) {
-            if (strcmp(mapa[i].cor, corJogador) == 0) contador++;
-        }
-        return (contador >= alvoNumero) ? 1 : 0;
-    }
-    return 0;
-}
-
-/* --- main --- */
+/* ---------- main ---------- */
 int main(void) {
     srand((unsigned int) time(NULL));
 
     const int qtd = MAX_TERRITORIOS;
 
+    /* templates de missões (contêm placeholders e tags)
+       - usamos um padrão simples: TAGS antes do '|' e descrição após o '|'
+       - placeholders: <COR> será substituído pela cor do jogador.
+    */
+    char* templates[] = {
+        "DESTRUIR_COR:<COR>|Eliminar todas as tropas da cor <COR> (a missão é tornar 0 territorios dessa cor).",
+        "CONQUISTAR_N:3;COR:<COR>|Conquistar pelo menos 3 territorios para a cor <COR>.",
+        "CONSECUTIVOS:3;COR:<COR>|Conquistar 3 territorios seguidos (indices consecutivos no vetor) com a cor <COR>.",
+        "CONQUISTAR_N:4;COR:<COR>|Conquistar pelo menos 4 territorios para a cor <COR>.",
+        "CONSECUTIVOS:2;COR:<COR>|Conquistar 2 territorios seguidos (indices consecutivos) com a cor <COR>."
+    };
+    const int totalTemplates = sizeof(templates) / sizeof(templates[0]);
+
     /* 1) aloca o mapa dinamicamente */
-    struct territorio* mapa = alocarMapa(qtd);
+    Territorio* mapa = alocarMapa(qtd);
     if (!mapa) {
         fprintf(stderr, "Nao foi possivel alocar o mapa. Abortando.\n");
         return 1;
     }
 
-    /* 2) inicializa os territorios (entrada pelo usuario) */
+    /* 2) inicializa territorios (entrada pelo usuario) */
     inicializarTerritorios(mapa, qtd);
 
-    /* 3) definicao do jogador e missao */
+    /* 3) definir cor do jogador (entrada) */
     char corJogador[TAM_COR];
     printf("\nDigite a cor do jogador (seu exército): ");
     if (fgets(corJogador, TAM_COR, stdin) == NULL) corJogador[0] = '\0';
     removerNovaLinha(corJogador);
 
-    int missaoId = sortearMissao();
-    int alvoNumero = 3; /* default para missao tipo 1: conquistar 3 territorios */
-    exibirMissao(missaoId, corJogador, alvoNumero);
+    /* 4) aloca dinamicamente a missao do jogador e atribui uma (usando strcpy dentro da funcao) */
+    char* missaoJogador = (char*) malloc(TAM_MISSAO);
+    if (!missaoJogador) {
+        fprintf(stderr, "Erro: falha na alocacao da missao.\n");
+        liberarMemoria(mapa);
+        return 1;
+    }
+    /* sorteia e copia template */
+    atribuirMissao(missaoJogador, templates, totalTemplates);
 
-    /* loop principal */
+    /* personaliza substituindo <COR> pela cor do jogador. Agora missaoJogador tem as tags e a descrição. */
+    personalizarMissao(missaoJogador, corJogador);
+
+    /* exibe missão para teste (apenas descrição legível) */
+    exibirMissaoFormatada(missaoJogador);
+
+    /* loop principal do jogo */
     int opcao = -1;
     do {
         exibirMenuPrincipal();
@@ -410,11 +514,15 @@ int main(void) {
             case 2:
                 faseDeAtaque(mapa, qtd, corJogador);
                 break;
-            case 3: {
-                exibirMissao(missaoId, corJogador, alvoNumero);
-                int venceu = verificarVitoria(mapa, qtd, missaoId, corJogador, alvoNumero);
+            case 3:
+                exibirMissaoFormatada(missaoJogador);
+                break;
+            case 4: {
+                exibirMissaoFormatada(missaoJogador);
+                int venceu = verificarMissao(missaoJogador, mapa, qtd);
                 if (venceu) {
                     printf("\nPARABENS! Missao cumprida.\n");
+                    /* opcional: terminar o jogo ou seguir jogando; aqui apenas exibe mensagem */
                 } else {
                     printf("\nMissao ainda nao cumprida. Continue jogando.\n");
                 }
@@ -430,6 +538,7 @@ int main(void) {
     } while (opcao != 0);
 
     /* cleanup */
+    free(missaoJogador);
     liberarMemoria(mapa);
     mapa = NULL;
 
